@@ -1,3 +1,5 @@
 .env
 credentials.json
 gmail_agent.ipynb
+static
+__pycache__
