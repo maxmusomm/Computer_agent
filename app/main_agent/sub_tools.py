@@ -12,40 +12,62 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Gmail API authentication scopes - we need .send permission to send emails
-SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.readonly']
+# Gmail API authentication scopes - updated to match token.json
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly'
+]
 
 def get_gmail_credentials():
     """Get and refresh Gmail API credentials"""
     creds = None
+    # Define project root for finding files
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    token_path = os.path.join(project_root, 'token.json')
+    
     # Check if token.json exists with stored credentials
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    if os.path.exists(token_path):
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            print(f"Found token at {token_path}")
+        except Exception as e:
+            print(f"Error loading token: {e}")
     
     # If no valid credentials, authenticate
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # Look for credentials.json in current directory
-            # If not found, check in the static directory for client_secret file
-            client_secret_file = 'credentials.json'
-            if not os.path.exists(client_secret_file):
-                # Try alternate location for client secret file
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-                alt_path = os.path.join(project_root, 'static', 'client_secret_214218856359-o80naasos3rvtg4mrh7nsbv4hbcqah70.apps.googleusercontent.com.json')
-                if os.path.exists(alt_path):
-                    client_secret_file = alt_path
-                    print(f"Using client secret file from: {alt_path}")
-                else:
-                    raise FileNotFoundError("No credentials.json or client secret file found.")
+            try:
+                creds.refresh(Request())
+                print("Token refreshed successfully")
+            except Exception as e:
+                print(f"Error refreshing token: {e}")
+                creds = None
+        
+        # If still no valid credentials, look for credentials.json
+        if not creds:
+            # Try multiple locations for credentials file
+            potential_paths = [
+                os.path.join(project_root, 'credentials.json'),
+                os.path.join(project_root, 'static', 'credentials.json')
+            ]
+            
+            client_secret_file = None
+            for path in potential_paths:
+                if os.path.exists(path):
+                    client_secret_file = path
+                    print(f"Using credentials from: {path}")
+                    break
+            
+            if not client_secret_file:
+                raise FileNotFoundError("No credentials.json file found in any of the expected locations.")
             
             flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, SCOPES)
             creds = flow.run_local_server(port=0)
         
         # Save credentials for future runs
-        with open('token.json', 'w') as token:
+        with open(token_path, 'w') as token:
             token.write(creds.to_json())
+            print(f"Credentials saved to {token_path}")
     
     return creds
 
@@ -54,9 +76,9 @@ def send_email(to: str, subject: str, body: str) -> dict:
     """Sends an email using Gmail API.
     
     Args:
-        to: Email address of the recipient
-        subject: Subject of the email
-        body: Body content of the email
+        to (string): Email address of the recipient
+        subject (string): Subject of the email
+        body (string): Body content of the email
         
     Returns:
         dict: Status of the email sending operation
@@ -99,7 +121,6 @@ def send_email(to: str, subject: str, body: str) -> dict:
             "message": f"An unexpected error occurred: {str(e)}"
         }
         
-
 def list_email_labels() -> dict:
     """Lists the user's Gmail labels.
     
@@ -133,3 +154,5 @@ def list_email_labels() -> dict:
             "status": "error",
             "message": f"An unexpected error occurred: {str(e)}"
         }
+        
+print(send_email("examplespambusines@gmail.com", "X ceo", "Just wanted to let you know that the current CEO of X Corp. is Linda Yaccarino. She took the position in June 2023."))

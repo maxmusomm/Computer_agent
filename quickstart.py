@@ -15,8 +15,7 @@ import argparse
 # Gmail API scopes needed for the email agent
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
-    'https://www.googleapis.com/auth/gmail.labels',
-    'https://www.googleapis.com/auth/gmail.readonly'  # For reading emails
+    'https://www.googleapis.com/auth/gmail.readonly'
 ]
 
 def setup_gmail_auth(credentials_file='credentials.json'):
