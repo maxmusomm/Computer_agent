@@ -1,7 +1,3 @@
-"""
-Gmail API tools for the Email Agent.
-"""
-
 import os
 import base64
 from email.mime.text import MIMEText
@@ -17,14 +13,16 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Gmail API authentication scopes - updated to match token.json
+# Combined API authentication scopes for both Gmail and Google Docs/Drive
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
-    'https://www.googleapis.com/auth/gmail.readonly'
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/docs',
+    'https://www.googleapis.com/auth/drive'
 ]
 
-def get_gmail_credentials():
-    """Get and refresh Gmail API credentials"""
+def get_credentials():
+    """Get and refresh API credentials for both Gmail and Google Docs/Drive"""
     creds = None
     # Define project root for finding files
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -90,7 +88,7 @@ def send_email(to: str, subject: str, body: str) -> dict:
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Create email message
@@ -134,7 +132,7 @@ def list_email_labels() -> dict:
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Call the Gmail API
@@ -181,7 +179,7 @@ def get_emails(
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Build the query string for Gmail API
@@ -231,22 +229,8 @@ def get_emails(
             sender_email = next((h["value"] for h in headers if h["name"].lower() == "from"), "Unknown")
             date_str = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
             
-            # Check if the message has a body
-            body = ""
-            if "parts" in msg["payload"]:
-                for part in msg["payload"]["parts"]:
-                    if part["mimeType"] == "text/plain":
-                        if "data" in part["body"]:
-                            body_bytes = base64.urlsafe_b64decode(part["body"]["data"])
-                            body = body_bytes.decode("utf-8")
-                            break
-            elif "body" in msg["payload"] and "data" in msg["payload"]["body"]:
-                body_bytes = base64.urlsafe_b64decode(msg["payload"]["body"]["data"])
-                body = body_bytes.decode("utf-8")
-            
-            # Extract a snippet if no body is found
-            if not body:
-                body = msg.get("snippet", "")
+            # Extract body using the helper function
+            body = extract_email_body(msg)
             
             # Add to our email list
             emails.append({
@@ -287,7 +271,7 @@ def get_email_by_id(email_id: str) -> dict:
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Fetch the specific message
@@ -389,7 +373,7 @@ def mark_email_as_read(email_id: str) -> dict:
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Remove UNREAD label
@@ -423,7 +407,7 @@ def count_unread_emails() -> dict:
     """
     try:
         # Get credentials and build service
-        creds = get_gmail_credentials()
+        creds = get_credentials()
         service = build('gmail', 'v1', credentials=creds)
         
         # Get unread messages
@@ -451,5 +435,187 @@ def count_unread_emails() -> dict:
             "status": "error",
             "message": f"An unexpected error occurred: {str(e)}"
         }
+
+def create_document(title: str, content: str = "") -> dict:
+    """Creates a new Google Doc.
+    
+    Args:
+        title (str): Title of the new document
+        content (str, optional): Initial content for the document
         
-print(send_email("examplespambusines@gmail.com", "X ceo", "Just wanted to let you know that the current CEO of X Corp. is Linda Yaccarino. She took the position in June 2023."))
+    Returns:
+        dict: Status and details of the created document
+    """
+    try:
+        # Get credentials
+        creds = get_credentials()
+        
+        # Create Drive service to create the document
+        drive_service = build('drive', 'v3', credentials=creds)
+        docs_service = build('docs', 'v1', credentials=creds)
+        
+        # Create an empty document
+        doc_metadata = {
+            'name': title,
+            'mimeType': 'application/vnd.google-apps.document'
+        }
+        
+        doc = drive_service.files().create(body=doc_metadata).execute()
+        document_id = doc.get('id')
+        
+        # If content is provided, add it to the document
+        if content:
+            requests = [
+                {
+                    'insertText': {
+                        'location': {
+                            'index': 1
+                        },
+                        'text': content
+                    }
+                }
+            ]
+            
+            docs_service.documents().batchUpdate(
+                documentId=document_id, 
+                body={'requests': requests}
+            ).execute()
+        
+        # Get the document URL
+        document_url = f"https://docs.google.com/document/d/{document_id}/edit"
+        
+        return {
+            "status": "success",
+            "message": f"Document '{title}' created successfully",
+            "document_id": document_id,
+            "document_url": document_url
+        }
+        
+    except HttpError as error:
+        return {
+            "status": "error",
+            "message": f"An error occurred: {error}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred: {str(e)}"
+        }
+print(create_document(title="Test Document", content="This is a test document."))
+
+def delete_document(document_id: str) -> dict:
+    """Deletes a Google Doc.
+    
+    Args:
+        document_id (str): ID of the document to delete
+        
+    Returns:
+        dict: Status of the operation
+    """
+    try:
+        # Get credentials
+        creds = get_credentials()
+        
+        # Create Drive service
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        # Delete the document (move to trash)
+        drive_service.files().delete(fileId=document_id).execute()
+        
+        return {
+            "status": "success",
+            "message": f"Document with ID {document_id} has been deleted"
+        }
+        
+    except HttpError as error:
+        return {
+            "status": "error",
+            "message": f"An error occurred: {error}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred: {str(e)}"
+        }
+
+def edit_document(document_id: str, content: str, replace_all: bool = False) -> dict:
+    """Edits a Google Doc by adding or replacing content.
+    
+    Args:
+        document_id (str): ID of the document to edit
+        content (str): Content to add or replace in the document
+        replace_all (bool): Whether to replace all existing content (True) or append (False)
+        
+    Returns:
+        dict: Status of the operation
+    """
+    try:
+        # Get credentials
+        creds = get_credentials()
+        
+        # Create Docs service
+        docs_service = build('docs', 'v1', credentials=creds)
+        
+        requests = []
+        
+        # If replacing all content, first get the document to find its content
+        if replace_all:
+            document = docs_service.documents().get(documentId=document_id).execute()
+            end_index = document.get('body', {}).get('content', [])[-1].get('endIndex', 1)
+            
+            # Delete all content
+            requests.append({
+                'deleteContentRange': {
+                    'range': {
+                        'startIndex': 1,
+                        'endIndex': end_index - 1
+                    }
+                }
+            })
+            
+            # Insert new content at the beginning
+            requests.append({
+                'insertText': {
+                    'location': {
+                        'index': 1
+                    },
+                    'text': content
+                }
+            })
+        else:
+            # Append to the end of the document
+            document = docs_service.documents().get(documentId=document_id).execute()
+            end_index = document.get('body', {}).get('content', [])[-1].get('endIndex', 1)
+            
+            requests.append({
+                'insertText': {
+                    'location': {
+                        'index': end_index - 1
+                    },
+                    'text': content
+                }
+            })
+        
+        # Execute the changes
+        docs_service.documents().batchUpdate(
+            documentId=document_id, 
+            body={'requests': requests}
+        ).execute()
+        
+        return {
+            "status": "success",
+            "message": f"Document with ID {document_id} has been updated",
+            "document_url": f"https://docs.google.com/document/d/{document_id}/edit"
+        }
+        
+    except HttpError as error:
+        return {
+            "status": "error",
+            "message": f"An error occurred: {error}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred: {str(e)}"
+        }
+

@@ -32,7 +32,12 @@ root_agent = Agent(
     model=GEMINI_MODEL,
     description=prompts.main_agent_description,
     instruction=prompts.main_agent_intrcutions,
-    tools=[tools.search_tool],
+    tools=[
+        tools.search_tool,
+        sub_agents.create_document_tool,
+        sub_agents.delete_document_tool,
+        sub_agents.edit_document_tool
+    ],
     sub_agents=[sub_agents.email_assistant_agent],  # List of sub-agents
 )
 

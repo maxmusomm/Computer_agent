@@ -19,6 +19,11 @@ get_email_by_id_tool = FunctionTool(func=sub_tools.get_email_by_id)
 mark_email_as_read_tool = FunctionTool(func=sub_tools.mark_email_as_read)
 count_unread_emails_tool = FunctionTool(func=sub_tools.count_unread_emails)
 
+# Create function tools for Google Docs operations
+create_document_tool = FunctionTool(func=sub_tools.create_document)
+delete_document_tool = FunctionTool(func=sub_tools.delete_document)
+edit_document_tool = FunctionTool(func=sub_tools.edit_document)
+
 search_agent = LlmAgent(
     model="gemini-2.0-flash-exp",  # Specify the LLM
     name="search_agent",
