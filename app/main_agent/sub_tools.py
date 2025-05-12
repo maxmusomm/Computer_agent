@@ -502,7 +502,6 @@ def create_document(title: str, content: str = "") -> dict:
             "status": "error",
             "message": f"An unexpected error occurred: {str(e)}"
         }
-print(create_document(title="Test Document", content="This is a test document."))
 
 def delete_document(document_id: str) -> dict:
     """Deletes a Google Doc.
@@ -761,3 +760,49 @@ def delete_sheet_from_spreadsheet(spreadsheet_id: str, sheet_name: str) -> dict:
         return {"status": "error", "message": f"An API error occurred: {error}"}
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
+
+def search_drive_files_by_name(name_query: str, mime_type: Optional[str] = None, max_results: int = 10) -> dict:
+    """Searches Google Drive for files by name (partial match).
+    
+    Args:
+        name_query (str): The name or partial name of the file to search for.
+        mime_type (Optional[str]): The MIME type to filter by (e.g., spreadsheets, docs). If None, searches all file types.
+        max_results (int): Maximum number of files to return (default 10).
+    
+    Returns:
+        dict: Status, a list of files (with id, name, description, mimeType), and a message.
+    """
+    try:
+        creds = get_credentials()
+        service = build('drive', 'v3', credentials=creds)
+        # Build the query string
+        query = f"name contains '{name_query}'"
+        if mime_type:
+            query += f" and mimeType='{mime_type}'"
+        # Only return not-trashed files
+        query += " and trashed = false"
+        results = service.files().list(
+            q=query,
+            pageSize=max_results,
+            fields="files(id, name, description, mimeType)"
+        ).execute()
+        files = results.get('files', [])
+        # Format output
+        file_list = [
+            {
+                'id': f.get('id'),
+                'name': f.get('name'),
+                'description': f.get('description', ''),
+                'mimeType': f.get('mimeType')
+            }
+            for f in files
+        ]
+        return {
+            'status': 'success',
+            'files': file_list,
+            'message': f"Found {len(file_list)} file(s) matching '{name_query}'."
+        }
+    except HttpError as error:
+        return {'status': 'error', 'message': f'An API error occurred: {error}'}
+    except Exception as e:
+        return {'status': 'error', 'message': f'An unexpected error occurred: {str(e)}'}

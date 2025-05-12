@@ -49,6 +49,7 @@ add_sheet_tool = FunctionTool(func=sub_tools.add_sheet_to_spreadsheet)
 get_sheet_values_tool = FunctionTool(func=sub_tools.get_sheet_values)
 update_sheet_values_tool = FunctionTool(func=sub_tools.update_sheet_values)
 delete_sheet_tool = FunctionTool(func=sub_tools.delete_sheet_from_spreadsheet)
+search_drive_files_tool = FunctionTool(func=sub_tools.search_drive_files_by_name)
 
 spreadsheet_assistant_agent = LlmAgent(
     name="spreadsheet_assistant_agent",
@@ -58,8 +59,9 @@ spreadsheet_assistant_agent = LlmAgent(
         add_sheet_tool,
         get_sheet_values_tool,
         update_sheet_values_tool,
-        delete_sheet_tool
+        delete_sheet_tool,
+        search_drive_files_tool
     ],
     instruction=prompts.spreadsheet_assistant_agent_instruction, # We will define this in prompts.py
-    description="An assistant that can create, read, update, and delete Google Spreadsheets and their sheets."
+    description="An assistant that can create, read, update, and delete Google Spreadsheets and their sheets, and search for spreadsheets by name."
 )
