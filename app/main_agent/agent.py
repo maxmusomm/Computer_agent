@@ -34,11 +34,12 @@ root_agent = Agent(
     instruction=prompts.main_agent_intrcutions,
     tools=[
         tools.search_tool,
-        sub_agents.create_document_tool,
-        sub_agents.delete_document_tool,
-        sub_agents.edit_document_tool
+        tools.create_document_tool,
+        tools.delete_document_tool,
+        tools.edit_document_tool,
+        
     ],
-    sub_agents=[sub_agents.email_assistant_agent],  # List of sub-agents
+    sub_agents=[sub_agents.email_assistant_agent, sub_agents.spreadsheet_assistant_agent],  # List of sub-agents
 )
 
 # Session and Runner

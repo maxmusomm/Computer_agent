@@ -13,12 +13,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Combined API authentication scopes for both Gmail and Google Docs/Drive
+# Combined API authentication scopes for Gmail and Google Docs/Drive
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/docs',
-    'https://www.googleapis.com/auth/drive'
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/spreadsheets'
 ]
 
 def get_credentials():
@@ -619,3 +620,144 @@ def edit_document(document_id: str, content: str, replace_all: bool = False) -> 
             "message": f"An unexpected error occurred: {str(e)}"
         }
 
+def update_sheet_values(spreadsheet_id: str, range_name: str, values: list[list[str]]) -> dict:
+    """Writes data to a specified range in a Google Sheet.
+    
+    Args:
+        spreadsheet_id (str): The ID of the spreadsheet.
+        range_name (str): The A1 notation of the range to write (e.g., "Sheet1!A1").
+        values (list[list[str]]): A 2D list of string values to write.
+        
+    Returns:
+        dict: Status and message.
+    """
+    try:
+        creds = get_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+        
+        body = {
+            'values': values
+        }
+        
+        result = service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption="RAW",
+            body=body
+        ).execute()
+        
+        return {
+            "status": "success",
+            "message": f"Updated range {range_name} in spreadsheet {spreadsheet_id}",
+            "updated_cells": result.get("updatedCells", 0)
+        }
+        
+    except HttpError as error:
+        return {
+            "status": "error",
+            "message": f"An error occurred: {error}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An unexpected error occurred: {str(e)}"
+        }
+
+def create_new_spreadsheet(title: str) -> dict:
+    """Creates a new Google Spreadsheet."""
+    try:
+        creds = get_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+        spreadsheet = {'properties': {'title': title}}
+        sheet = service.spreadsheets().create(body=spreadsheet, fields='spreadsheetId,spreadsheetUrl').execute()
+        return {
+            "status": "success",
+            "message": f"Spreadsheet '{title}' created successfully.",
+            "spreadsheet_id": sheet.get('spreadsheetId'),
+            "spreadsheet_url": sheet.get('spreadsheetUrl')
+        }
+    except HttpError as error:
+        return {"status": "error", "message": f"An API error occurred: {error}"}
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
+
+def add_sheet_to_spreadsheet(spreadsheet_id: str, sheet_title: str) -> dict:
+    """Adds a new sheet (tab) to an existing Google Spreadsheet."""
+    try:
+        creds = get_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+        requests = [{
+            'addSheet': {
+                'properties': {'title': sheet_title}
+            }
+        }]
+        body = {'requests': requests}
+        response = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        new_sheet_properties = None
+        for reply in response.get('replies', []):
+            if 'addSheet' in reply:
+                new_sheet_properties = reply['addSheet']['properties']
+                break
+        if new_sheet_properties:
+            return {
+                "status": "success",
+                "message": f"Sheet '{sheet_title}' added successfully to spreadsheet {spreadsheet_id}.",
+                "sheet_id": new_sheet_properties.get('sheetId'),
+                "sheet_title": new_sheet_properties.get('title')
+            }
+        else:
+            return {"status": "error", "message": "Could not find new sheet properties in API response."}
+    except HttpError as error:
+        return {"status": "error", "message": f"An API error occurred: {error}"}
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
+
+def get_sheet_values(spreadsheet_id: str, range_name: str) -> dict:
+    """Reads data from a specified range in a Google Sheet."""
+    try:
+        creds = get_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+        result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
+        values = result.get('values', [])
+        return {
+            "status": "success",
+            "message": f"Successfully retrieved values from range '{range_name}'.",
+            "values": values
+        }
+    except HttpError as error:
+        return {"status": "error", "message": f"An API error occurred: {error}"}
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
+
+def delete_sheet_from_spreadsheet(spreadsheet_id: str, sheet_name: str) -> dict:
+    """Deletes a sheet (tab) from a Google Spreadsheet by its name."""
+    try:
+        creds = get_credentials()
+        service = build('sheets', 'v4', credentials=creds)
+        sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = sheet_metadata.get('sheets', '')
+        sheet_id_to_delete = None
+        for sheet in sheets:
+            if sheet.get('properties', {}).get('title', '') == sheet_name:
+                sheet_id_to_delete = sheet.get('properties', {}).get('sheetId')
+                break
+        if sheet_id_to_delete is None:
+            return {
+                "status": "error",
+                "message": f"Sheet with name '{sheet_name}' not found in spreadsheet {spreadsheet_id}."
+            }
+        requests = [{
+            'deleteSheet': {
+                'sheetId': sheet_id_to_delete
+            }
+        }]
+        body = {'requests': requests}
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        return {
+            "status": "success",
+            "message": f"Sheet '{sheet_name}' deleted successfully from spreadsheet {spreadsheet_id}."
+        }
+    except HttpError as error:
+        return {"status": "error", "message": f"An API error occurred: {error}"}
+    except Exception as e:
+        return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
